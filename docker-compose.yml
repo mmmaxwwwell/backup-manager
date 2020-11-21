@@ -1,0 +1,13 @@
+version: '3'
+services:
+  backup-manager:
+    #image: mmmaxwwwell/backup-manager
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backup-manager
+    restart: unless-stopped
+    volumes:
+      - ./secrets:/home/node/secrets
+    env_file:
+      - ./secrets/.env

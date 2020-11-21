@@ -1,0 +1,13 @@
+{
+  "name": "app",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "moment": "^2.28.0",
+    "moment-timezone": "^0.5.31",
+    "node-persist": "^3.1.0",
+    "nodemon": "^2.0.4"
+  },
+  "scripts": {
+    "dev": "nodemon -x node -r dotenv/config main.js dotenv_config_path=../secrets/.env"
+  }
+}
