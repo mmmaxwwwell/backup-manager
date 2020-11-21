@@ -9,12 +9,15 @@ const checkNodeVersion = () => {
 }
 
 beforeEach(() => {
+  jest.useFakeTimers()
 });
 
 afterEach(() => {
+  jest.useRealTimers()
 });
 
 beforeAll(() => {
+  process.env.DEBUG = "true"
   checkNodeVersion()
   if (!fs.existsSync(tmpDir)){
     fs.mkdirSync(tmpDir)
@@ -41,23 +44,31 @@ test('sets firstRun and is the same value on subsequent runs', async () => {
 });
 
 test('creates and executes one timer', async () => {
-  jest.useFakeTimers()
+
   const storageDir = `${tmpDir}/${Date.now()}createAndExecute`
-  process.env.BACKUP_STRATEGY = [
-    {
-      name: 'test-strategy-part',
-      frequency: 1,
-      units: 'second',
-      offsite: false,
-      retainCount: 24
-    }
-  ].toString()
   const backup = require('../backup');
   const backupSpy = jest.spyOn(backup, "backup")
-  await backup.init({dryRun: true, storageDir})
+  await backup.init({
+    dryRun: true, 
+    storageDir, 
+    testBackupStrategy: [
+      {
+        name: 'test-strategy-part',
+        frequency: 1,
+        units: 'second',
+        offsite: false,
+        retainCount: 24
+      }
+    ]
+  })
+
   setTimeout(() => {
-    expect(backupSpy).toBeCalled()
+    expect(backupSpy).toBeCalledWith(expect.objectContaining({
+      name: 'test-strategy-part'
+    }))
   }, 5000)
+
+  jest.runAllTimers()
 })
 
 

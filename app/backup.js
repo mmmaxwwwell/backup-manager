@@ -1,6 +1,11 @@
 const storage = require('node-persist');
 const moment = require('moment')
 
+const debug = (event, obj) => {
+  if(process.env.DEBUG)
+    console.log({event, obj})
+}
+
 //do everything except the backup
 let _dryRun = false
 
@@ -25,12 +30,14 @@ const defaultBackupStrategy = [
     retainCount: 60
   }
 ]
-const backupStrategy = !!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy
+let backupStrategy
 
 const init = async ({
   dryRun = false, 
-  storageDir = '../storage'
+  storageDir = '../storage',
+  testBackupStrategy = undefined
 }) => {
+  backupStrategy = testBackupStrategy || (!!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy)
   dryRun = _dryRun
   await storage.init({dir: storageDir})
   firstRun = await storage.getItem('first-run')
@@ -79,8 +86,7 @@ const backup = async ({
   runNumber,
   firstRun
 }) => {
-  console.log({
-    event:'do-backup',
+  debug('do-backup', {
     name,
     runNumber,
     firstRun
