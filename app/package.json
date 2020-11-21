@@ -8,6 +8,10 @@
     "nodemon": "^2.0.4"
   },
   "scripts": {
-    "dev": "nodemon -x node -r dotenv/config main.js dotenv_config_path=../secrets/.env"
+    "dev": "nodemon -x node -r dotenv/config main.js dotenv_config_path=../secrets/.env",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^26.6.3"
   }
 }
