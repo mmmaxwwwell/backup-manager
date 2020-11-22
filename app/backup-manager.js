@@ -42,7 +42,7 @@ let backupStrategy
 
 const init = async (
   _dryRun = false, 
-  storageDir = '../storage'
+  storageDir = `${__dirname}/storage`
 ) => {
   backupStrategy = !!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy
   dryRun = _dryRun
