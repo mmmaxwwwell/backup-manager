@@ -148,7 +148,7 @@ const getBackupName = (o = {}) => {
   const worldName = o.worldName || process.env.WORLD_NAME
   const strategyName = o.strategyName
   const runNumber = o.runNumber
-  return `${gameName}-${worldName}-${strategyName}-${runNumber ?? Date.now()}.zip`
+  return `${gameName}-${worldName}-${strategyName}-${runNumber || Date.now()}.zip`
 }
 
 const getBucketName = () => {
