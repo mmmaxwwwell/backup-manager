@@ -23,44 +23,20 @@ let firstRun
 
 const defaultBackupStrategy = [
   {
-    name: '15s',
-    frequency: 15,
-    unit: 'seconds',
+    name: '1hlocal',
+    frequency: 1,
+    units: 'hour',
     offsite: false,
-    retainCount: 2
+    retainCount: 24
   },
   {
-    name: '30s',
-    frequency: 30,
-    unit: 'seconds',
+    name: '12hcloud',
+    frequency: 12,
+    unit: 'hour',
     offsite: true,
-    retainCount: 2
-  },
-  // {
-  //   name: 'four-min',
-  //   frequency: 4,
-  //   unit: 'minute',
-  //   offsite: false,
-  //   retainCount: 2
-  // }
+    retainCount: 60
+  }
 ]
-
-// const defaultBackupStrategy = [
-//   {
-//     name: 'hourly-local',
-//     frequency: 1,
-//     units: 'hour',
-//     offsite: false,
-//     retainCount: 24
-//   },
-//   {
-//     name: '12-hour-offsite',
-//     frequency: 12,
-//     unit: 'hour',
-//     offsite: true,
-//     retainCount: 60
-//   }
-// ]
 
 let backupStrategy
 

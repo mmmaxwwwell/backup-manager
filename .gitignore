@@ -2,7 +2,3 @@ node_modules/
 secrets/*
 .env
 tmp/
-backup_source/*
-local_backup/*
-output/*
-storage/*

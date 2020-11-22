@@ -6,8 +6,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: backup-manager
-    restart: unless-stopped
+    restart: always
     volumes:
-      - ./secrets:/home/node/secrets
+      - ./local_backup:/home/node/local_backup
+      - ./backup_source:/home/node/backup_source
+      - ./storage:/home/node/storage
     env_file:
       - ./secrets/.env
