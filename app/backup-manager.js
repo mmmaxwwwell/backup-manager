@@ -16,26 +16,26 @@ let firstRun
 
 const defaultBackupStrategy = [
   {
-    name: 'test-strategy-part-1',
+    name: 'one-min',
     frequency: 1,
-    unit: 'second',
+    unit: 'minute',
     offsite: false,
-    retainCount: 24
+    retainCount: 2
   },
-  {
-    name: 'test-strategy-part-2',
-    frequency: 2,
-    unit: 'second',
-    offsite: false,
-    retainCount: 24
-  },
-  {
-    name: 'test-strategy-part-4',
-    frequency: 4,
-    unit: 'second',
-    offsite: false,
-    retainCount: 24
-  }
+  // {
+  //   name: 'two-min',
+  //   frequency: 2,
+  //   unit: 'minute',
+  //   offsite: false,
+  //   retainCount: 2
+  // },
+  // {
+  //   name: 'four-min',
+  //   frequency: 4,
+  //   unit: 'minute',
+  //   offsite: false,
+  //   retainCount: 2
+  // }
 ]
 
 // const defaultBackupStrategy = [
@@ -59,11 +59,9 @@ let backupStrategy
 
 const init = async (
   dryRun = false, 
-  storageDir = '../storage',
-  testBackupStrategy = undefined
+  storageDir = '../storage'
 ) => {
-  // backupStrategy = defaultBackupStrategy
-  backupStrategy = testBackupStrategy || (!!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy)
+  backupStrategy = !!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy
   dryRun = _dryRun
   await storage.init({dir: storageDir})
   firstRun = await storage.getItem('first-run')
@@ -122,7 +120,7 @@ const createArchive = () => {
   const globs = process.env.FILE_GLOBS.split(",")
   
   globs.forEach((glob) => {
-    archive.glob(glob)
+    archive.glob(`./backup_source/${glob}`)
   })
   
   archive.finalize();
@@ -139,12 +137,6 @@ const getBackupName = (o = {}) => {
 const getBucketName = () => `${process.env.GAME_NAME}-${process.env.WORLD_NAME}`
 
 const backup = async ({runAt}) => {
-  debug('do-backup', {
-    name,
-    runNumber,
-    firstRun
-  })
-
   setNextTimer()
 
   //find all events that are supposed to fire at runAt
@@ -167,26 +159,38 @@ const backup = async ({runAt}) => {
   if(!dryRun)
     matches.forEach((strategy) => {
       if(strategy.offsite){
-        await s3.createBucket({
-          Bucket: getBucketName(), 
-          CreateBucketConfiguration: {
-            LocationConstraint: "us-east-1"
-          }
-        }).promise()
-        await s3.upload({
-          Bucket: getBucketName(),
-          Key: getBackupName(),
-          Body: fs.createReadStream('./output/output.zip')
-        }).promise()
+        try{
+          await s3.createBucket({
+            Bucket: getBucketName(), 
+            CreateBucketConfiguration: {
+              LocationConstraint: "us-east-1"
+            }
+          }).promise()
+          await s3.upload({
+            Bucket: getBucketName(),
+            Key: getBackupName(),
+            Body: fs.createReadStream('./output/output.zip')
+          }).promise()
+        }catch(error){
+          console.error({event:'upload-exception', error})
+        }
       }else{
-        await fs.copyFile('./output/output.zip', `./local_backup/${getBackupName()}`)
+        try{
+          await fs.copyFile('./output/output.zip', `./local_backup/${getBackupName()}`)
+        }catch(error){
+          console.error({event:'copy-exception', error})
+        }
       }
     })
 
   //destroy the temp archive
   if(!dryRun)
     if (fs.existsSync('./output')){
-      fs.rmdirSync('./output', { recursive: true })
+      try{
+        fs.rmdirSync('./output', { recursive: true })
+      }catch(error){
+        console.error({event:'cleanup-exception', error})
+      }
     }
   
   //remove all expired backups
@@ -200,12 +204,20 @@ const backup = async ({runAt}) => {
         })
 
         if(match.offsite){
-          await s3.deleteObject({
-            Bucket: getBucketName(),
-            Key: removeName
-          }).promise()
+          try{
+            await s3.deleteObject({
+              Bucket: getBucketName(),
+              Key: removeName
+            }).promise()
+          }catch(error){
+            console.error({event:'cloud-cleanup-exception', error})
+          }
         }else{
-          await fs.unlink(`./local_backup/${removeName}`)
+          try{
+            await fs.unlink(`./local_backup/${removeName}`)
+          }catch(error){
+            console.error({event:'local-cleanup-exception', error})
+          }
         }
       }
     })
