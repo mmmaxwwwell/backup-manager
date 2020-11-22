@@ -4,6 +4,8 @@ const { debug } = require('./debug')
 const fs = require('fs');
 const archiver = require('archiver')
 const AWS = require('aws-sdk')
+const child_process = require('child_process')
+const crypto = require('crypto')
 const s3 = new AWS.S3({
   region: process.env.S3_REGION,
   endpoint: `${process.env.S3_REGION}.${process.env.S3_ENDPOINT}`,
@@ -23,10 +25,10 @@ let firstRun
 
 const defaultBackupStrategy = [
   {
-    name: '1hlocal',
-    frequency: 3600000,
+    name: '15mlocal',
+    frequency: 900000,
     offsite: false,
-    retainCount: 24
+    retainCount: 96
   },
   {
     name: '12hcloud',
@@ -35,6 +37,22 @@ const defaultBackupStrategy = [
     retainCount: 60
   }
 ]
+
+// const defaultBackupStrategy = [
+//   {
+//     name: '15slocal',
+//     frequency: 1000 * 15,
+//     offsite: false,
+//     retainCount: 2
+//   },
+//   {
+//     name: '30scloud',
+//     frequency: 1000 * 15,
+//     offsite: true,
+//     retainCount: 2
+//   }
+// ]
+
 
 let backupStrategy
 
@@ -86,6 +104,16 @@ const setNextTimer = () => {
   console.log(`next run scheduled at ${moment(nextRunAt).toISOString()} for ${nextStrategy.name}`)
 }
 
+function checksumFile(hashName, path) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash(hashName);
+    const stream = fs.createReadStream(path);
+    stream.on('error', err => reject(err));
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
 const createArchive = async () => new Promise((resolve, reject) =>{
   const outputDir = `${__dirname}/output`
   try{
@@ -96,7 +124,7 @@ const createArchive = async () => new Promise((resolve, reject) =>{
     if(fs.existsSync(`${outputDir}/output.zip`))
       fs.unlinkSync(`${outputDir}/output.zip`)
 
-      const output = fs.createWriteStream(`${outputDir}/output.zip`);
+    const output = fs.createWriteStream(`${outputDir}/output.zip`);
     const archive = archiver('zip', {
       zlib: { level: 9 } 
     })
@@ -118,20 +146,41 @@ const createArchive = async () => new Promise((resolve, reject) =>{
       throw err;
     });
   
-    output.on('close', () => {
-        resolve()
+    output.on('close', async () => {
+        resolve(await checksumFile('sha256', `${outputDir}/output.zip`))
     });
   
     archive.pipe(output);
-  
-    const globs = process.env.FILE_GLOBS.split(",")
-    globs.forEach((glob) => {
-      const path = `${__dirname}/backup_source/${glob}`
-      if(fs.lstatSync(path).isDirectory()){
-        archive.directory(path, glob)
-      }else if(fs.lstatSync(path).isFile()){
-        archive.file(path, {name: glob})
-      }
+    const includeRegexes = process.env.FILES_INCLUDE.split(',')
+    const excludeRegexes = process.env.FILES_EXCLUDE.split(',')
+    //theres probably a more efficent way to do this, 
+    //i'll fix it when theres a problem
+    const findResult = child_process.execSync('find', {
+      cwd: `${__dirname}/backup_source`
+    }).toString().split('\n').filter((value, index, arr) => {
+      return value != '' && value != '.'
+    }).filter((value, index, arr) => {
+      let include = true
+      excludeRegexes.find(regex => {
+        if(value.match(regex))
+          include = false
+      })
+      if(!include)
+        return include
+      include = false
+      includeRegexes.find(regex => {
+        if(value.match(regex))
+          include = true
+      });
+      return include
+    })
+
+    findResult.forEach(filePath => {
+      const subPath = filePath.replace('./', '')
+      const absPath = `${__dirname}/backup_source/${subPath}`
+      archive.file(absPath, {
+        name: subPath
+      })
     })
     
     archive.finalize();
@@ -169,8 +218,9 @@ const backup = async ({runAt}) => {
   })
 
   //create the archive
+  let checksum
   if(!dryRun)
-    await createArchive()
+    checksum = await createArchive()
   
   //move the archive where it needs to go
   if(!dryRun)
@@ -188,6 +238,10 @@ const backup = async ({runAt}) => {
             }),
             Body: fs.createReadStream('./output/output.zip')
           }).promise()
+          console.log(`uploaded ${getBackupName({
+            strategyName: strategy.name,
+            runNumber: strategy.currentRunNumber
+          })} to ${getBucketName()} for ${strategy.name} at ${moment().toISOString()} with checksum ${checksum}`)
         }catch(error){
           console.error({event:'upload-exception', error})
         }
@@ -199,6 +253,10 @@ const backup = async ({runAt}) => {
               strategyName: strategy.name,
               runNumber: strategy.currentRunNumber
             })}`)
+            console.log(`uploaded ${getBackupName({
+              strategyName: strategy.name,
+              runNumber: strategy.currentRunNumber
+            })} to ./local_backup/ for ${strategy.name} at ${moment().toISOString()} with checksum ${checksum}`)
         }catch(error){
           console.error({event:'copy-exception', error})
         }
@@ -231,12 +289,14 @@ const backup = async ({runAt}) => {
               Bucket: getBucketName(),
               Key: removeName
             }).promise()
+            console.log(`removed ${removeName} from ${getBucketName()} for ${strategy.name} at ${moment().toISOString()}`)
           }catch(error){
             console.error({event:'cloud-cleanup-exception', error})
           }
         }else{
           try{
             await fs.unlinkSync(`./local_backup/${removeName}`)
+            console.log(`removed ${removeName} from ./local_backup/ for ${strategy.name} at ${moment().toISOString()}`)
           }catch(error){
             console.error({event:'local-cleanup-exception', error})
           }
