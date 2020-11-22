@@ -24,15 +24,13 @@ let firstRun
 const defaultBackupStrategy = [
   {
     name: '1hlocal',
-    frequency: 1,
-    units: 'hour',
+    frequency: 3600000,
     offsite: false,
     retainCount: 24
   },
   {
     name: '12hcloud',
-    frequency: 12,
-    unit: 'hour',
+    frequency: 3600000 * 12,
     offsite: true,
     retainCount: 60
   }
@@ -44,6 +42,7 @@ const init = async (
   _dryRun = false, 
   storageDir = `${__dirname}/storage`
 ) => {
+  console.log('backup-manager init')
   backupStrategy = !!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy
   dryRun = _dryRun
   await storage.init({dir: storageDir})
@@ -67,10 +66,16 @@ const setNextTimer = () => {
   let nextRunAt = Number.MAX_VALUE
   let nextStrategy
   backupStrategy.forEach((strategy) => {
-    const freqMs = moment(0).add(strategy.frequency, strategy.unit).unix() * 1000
-    const currentRunNumber = Math.floor(( Date.now() - firstRun ) / freqMs)
-    const nextRun = ((currentRunNumber + 1) * freqMs) + firstRun
+    const currentRunNumber = Math.floor(( Date.now() - firstRun ) / strategy.frequency)
+    const nextRun = ((currentRunNumber + 1) * strategy.frequency) + firstRun
+    console.log({
+      now8601: moment().toISOString(),
+      nextRun8601: moment(nextRun).toISOString(),
+      strategy, 
+      nextRun, 
+      currentRunNumber})
     if(nextRun < nextRunAt) {
+      
       nextRunAt = nextRun
       nextStrategy = strategy
     }
@@ -85,6 +90,7 @@ const setNextTimer = () => {
       nextRunAt - Date.now()
     )
   }
+  console.log(`next run scheduled at ${moment(nextRunAt).toISOString()} for ${nextStrategy.name}`)
 }
 
 const createArchive = async () => new Promise((resolve, reject) =>{
@@ -161,10 +167,9 @@ const backup = async ({runAt}) => {
   //find all events that are supposed to fire at runAt
   let matches = []
   backupStrategy.forEach((strategy) => {
-    const freqMs = moment(0).add(strategy.frequency, strategy.unit).unix() * 1000
-    const currentRunNumber = Math.floor(( Date.now() - firstRun ) / freqMs)
-    const nextRun = ((currentRunNumber + 1) * freqMs) + firstRun
-    const lastRun = (currentRunNumber * freqMs) + firstRun
+    const currentRunNumber = Math.floor(( Date.now() - firstRun ) / strategy.frequency)
+    const nextRun = ((currentRunNumber + 1) * strategy.frequency) + firstRun
+    const lastRun = (currentRunNumber * strategy.frequency) + firstRun
     if(nextRun == runAt || lastRun == runAt) {
       matches.push({...strategy, currentRunNumber})
     }
