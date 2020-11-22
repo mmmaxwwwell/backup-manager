@@ -1,8 +1,8 @@
-const backup = require('./backup');
+const backupManager = require('./backup-manager');
 
 (async () => {
   try {
-    backup.init()
+    await backupManager.init()
   } catch (error) {
     console.log({event: 'unhandled-exception', error})
   }
