@@ -2,20 +2,20 @@ const storage = require('node-persist');
 const moment = require('moment')
 const { debug } = require('./debug')
 const fs = require('fs');
-const archiver = require('archiver');
-const { match } = require('assert');
-var s3 = new AWS.S3();
+const archiver = require('archiver')
+const AWS = require('aws-sdk')
+const s3 = new AWS.S3();
 s3.endpoint = process.env.S3_ENDPOINT
 // process.env.DEBUG = "true"
-let _dryRun = false
+let dryRun = false
 let timer
 let firstRun
 
 const defaultBackupStrategy = [
   {
     name: 'one-min',
-    frequency: 1,
-    unit: 'minute',
+    frequency: 15,
+    unit: 'seconds',
     offsite: false,
     retainCount: 2
   },
@@ -55,7 +55,7 @@ const defaultBackupStrategy = [
 let backupStrategy
 
 const init = async (
-  dryRun = false, 
+  _dryRun = false, 
   storageDir = '../storage'
 ) => {
   backupStrategy = !!process.env.BACKUP_STRATEGY ? JSON.parse(process.env.BACKUP_STRATEGY) : defaultBackupStrategy
@@ -101,34 +101,63 @@ const setNextTimer = () => {
   }
 }
 
-const createArchive = () => {
-  if (fs.existsSync('./output')){
-    fs.rmdirSync('./output', { recursive: true })
-  }
-  fs.mkdirSync('./output')
+const createArchive = async () => new Promise((resolve, reject) =>{
+  const outputDir = `${__dirname}/output`
+  try{
+    if (!fs.existsSync(outputDir)){
+      debug('creating-output-folder', outputDir)
+      fs.mkdirSync(outputDir)
+    }
+    if(fs.existsSync(`${outputDir}/output.zip`))
+      fs.unlinkSync(`${outputDir}/output.zip`)
 
-  const output = fs.createWriteStream('./output/output.zip');
-  const archive = archiver('zip');
+      const output = fs.createWriteStream(`${outputDir}/output.zip`);
+    const archive = archiver('zip', {
+      zlib: { level: 9 } 
+    })
 
-  output.on('close', function () {
-      console.log(archive.pointer() + ' total bytes');
-      console.log('archiver has been finalized and the output file descriptor has closed.');
-  });
+    output.on('end', function() {
+      console.log('Data has been drained');
+    });
 
-  archive.on('error', function(err){
+    archive.on('warning', function(err) {
+      if (err.code === 'ENOENT') {
+        // log warning
+      } else {
+        // throw error
+        throw err;
+      }
+    });
+
+    archive.on('error', function(err) {
       throw err;
-  });
-
-  archive.pipe(output);
-
-  const globs = process.env.FILE_GLOBS.split(",")
+    });
   
-  globs.forEach((glob) => {
-    archive.glob(`./backup_source/${glob}`)
-  })
+    output.on('close', function () {
+        console.log(archive.pointer() + ' total bytes');
+        console.log('archiver has been finalized and the output file descriptor has closed.');
+        resolve()
+    });
   
-  archive.finalize();
-}
+    archive.pipe(output);
+  
+    const globs = process.env.FILE_GLOBS.split(",")
+    globs.forEach((glob) => {
+      const path = `${__dirname}/backup_source/${glob}`
+      if(fs.lstatSync(path).isDirectory()){
+        archive.directory(path, glob)
+      }else if(fs.lstatSync(path).isFile()){
+        archive.file(path, {name: glob})
+      }
+    })
+    
+    archive.finalize();
+  }catch(error){
+    console.error({event:'create-archive-exception', error})
+    reject()
+    return
+  }
+})
 
 const getBackupName = (o = {}) => {
   const gameName = o.gameName || process.env.GAME_NAME
@@ -157,7 +186,7 @@ const backup = async ({runAt}) => {
 
   //create the archive
   if(!dryRun)
-    createArchive()
+    await createArchive()
   
   //move the archive where it needs to go
   if(!dryRun)
@@ -180,7 +209,12 @@ const backup = async ({runAt}) => {
         }
       }else{
         try{
-          await fs.copyFile('./output/output.zip', `./local_backup/${getBackupName()}`)
+          fs.copyFileSync(
+            './output/output.zip', 
+            `./local_backup/${getBackupName({
+              strategyName: strategy.name,
+              runNumber: strategy.currentRunNumber
+            })}`)
         }catch(error){
           console.error({event:'copy-exception', error})
         }
@@ -189,9 +223,9 @@ const backup = async ({runAt}) => {
 
   //destroy the temp archive
   if(!dryRun)
-    if (fs.existsSync('./output')){
+    if (fs.existsSync(`${__dirname}/output/output.zip`)){
       try{
-        fs.rmdirSync('./output', { recursive: true })
+        fs.unlinkSync(`${__dirname}/output/output.zip`, { recursive: true })
       }catch(error){
         console.error({event:'cleanup-exception', error})
       }
@@ -207,7 +241,7 @@ const backup = async ({runAt}) => {
           runNumber
         })
 
-        if(match.offsite){
+        if(strategy.offsite){
           try{
             await s3.deleteObject({
               Bucket: getBucketName(),
@@ -218,7 +252,7 @@ const backup = async ({runAt}) => {
           }
         }else{
           try{
-            await fs.unlink(`./local_backup/${removeName}`)
+            await fs.unlinkSync(`./local_backup/${removeName}`)
           }catch(error){
             console.error({event:'local-cleanup-exception', error})
           }
@@ -227,4 +261,4 @@ const backup = async ({runAt}) => {
     })
 }
 
-module.exports = { init, backup, timers }
+module.exports = { init }
