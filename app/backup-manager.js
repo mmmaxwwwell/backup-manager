@@ -68,14 +68,7 @@ const setNextTimer = () => {
   backupStrategy.forEach((strategy) => {
     const currentRunNumber = Math.floor(( Date.now() - firstRun ) / strategy.frequency)
     const nextRun = ((currentRunNumber + 1) * strategy.frequency) + firstRun
-    console.log({
-      now8601: moment().toISOString(),
-      nextRun8601: moment(nextRun).toISOString(),
-      strategy, 
-      nextRun, 
-      currentRunNumber})
     if(nextRun < nextRunAt) {
-      
       nextRunAt = nextRun
       nextStrategy = strategy
     }

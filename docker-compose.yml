@@ -8,8 +8,8 @@ services:
     container_name: backup-manager
     restart: always
     volumes:
-      - ./local_backup:/home/node/local_backup
-      - ./backup_source:/home/node/backup_source
-      - ./storage:/home/node/storage
+      - ./local_backup:/home/node/app/local_backup
+      - ./backup_source:/home/node/app/backup_source
+      - ./storage:/home/node/app/storage
     env_file:
       - ./secrets/.env
