@@ -156,7 +156,8 @@ const createArchive = async () => new Promise((resolve, reject) =>{
     //theres probably a more efficent way to do this, 
     //i'll fix it when theres a problem
     const findResult = child_process.execSync('find', {
-      cwd: `${__dirname}/backup_source`
+      cwd: `${__dirname}/backup_source`,
+      maxBuffer: 500 * 1024 * 1024 
     }).toString().split('\n').filter((value, index, arr) => {
       return value != '' && value != '.'
     }).filter((value, index, arr) => {
