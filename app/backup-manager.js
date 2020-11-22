@@ -6,12 +6,9 @@ const archiver = require('archiver');
 const { match } = require('assert');
 var s3 = new AWS.S3();
 s3.endpoint = process.env.S3_ENDPOINT
-
 // process.env.DEBUG = "true"
-
 let _dryRun = false
 let timer
-
 let firstRun
 
 const defaultBackupStrategy = [
@@ -71,6 +68,13 @@ const init = async (
   }
 
   setNextTimer()
+}
+
+//https://codeburst.io/javascript-async-await-with-foreach-b6ba62bbf404
+async function asyncForEach(array, callback) {
+  for (let index = 0; index < array.length; index++) {
+    await callback(array[index], index, array);
+  }
 }
 
 const setNextTimer = () => {
@@ -157,7 +161,7 @@ const backup = async ({runAt}) => {
   
   //move the archive where it needs to go
   if(!dryRun)
-    matches.forEach((strategy) => {
+    await asyncForEach(matches, async (strategy) => {
       if(strategy.offsite){
         try{
           await s3.createBucket({
@@ -195,7 +199,7 @@ const backup = async ({runAt}) => {
   
   //remove all expired backups
   if(!dryRun)
-    matches.forEach((strategy) => {
+    await asyncForEach(matches, async (strategy) => {
       if(strategy.currentRunNumber > strategy.retainCount){
         const runNumber = strategy.currentRunNumber - strategy.retainCount
         const removeName = getBackupName({
