@@ -4,8 +4,18 @@ const { debug } = require('./debug')
 const fs = require('fs');
 const archiver = require('archiver')
 const AWS = require('aws-sdk')
-const s3 = new AWS.S3();
-s3.endpoint = process.env.S3_ENDPOINT
+const s3 = new AWS.S3({
+  region: process.env.S3_REGION,
+  endpoint: `${process.env.S3_REGION}.${process.env.S3_ENDPOINT}`,
+  apiVersion: "2006-03-01",
+  credentials: new AWS.Credentials({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }),
+  sslEnabled: true,
+  s3ForcePathStyle: false
+})
+s3.api.globalEndpoint = s3.config.endpoint;
 // process.env.DEBUG = "true"
 let dryRun = false
 let timer
@@ -13,19 +23,19 @@ let firstRun
 
 const defaultBackupStrategy = [
   {
-    name: 'one-min',
+    name: '15s',
     frequency: 15,
     unit: 'seconds',
     offsite: false,
     retainCount: 2
   },
-  // {
-  //   name: 'two-min',
-  //   frequency: 2,
-  //   unit: 'minute',
-  //   offsite: false,
-  //   retainCount: 2
-  // },
+  {
+    name: '30s',
+    frequency: 30,
+    unit: 'seconds',
+    offsite: true,
+    retainCount: 2
+  },
   // {
   //   name: 'four-min',
   //   frequency: 4,
@@ -133,9 +143,7 @@ const createArchive = async () => new Promise((resolve, reject) =>{
       throw err;
     });
   
-    output.on('close', function () {
-        console.log(archive.pointer() + ' total bytes');
-        console.log('archiver has been finalized and the output file descriptor has closed.');
+    output.on('close', () => {
         resolve()
     });
   
@@ -167,7 +175,9 @@ const getBackupName = (o = {}) => {
   return `${gameName}-${worldName}-${strategyName}-${runNumber ?? Date.now()}.zip`
 }
 
-const getBucketName = () => `${process.env.GAME_NAME}-${process.env.WORLD_NAME}`
+const getBucketName = () => {
+  return `${process.env.GAME_NAME}-${process.env.WORLD_NAME}`
+}
 
 const backup = async ({runAt}) => {
   setNextTimer()
@@ -195,13 +205,13 @@ const backup = async ({runAt}) => {
         try{
           await s3.createBucket({
             Bucket: getBucketName(), 
-            CreateBucketConfiguration: {
-              LocationConstraint: "us-east-1"
-            }
           }).promise()
           await s3.upload({
             Bucket: getBucketName(),
-            Key: getBackupName(),
+            Key: getBackupName({
+              strategyName: strategy.name,
+              runNumber: strategy.currentRunNumber
+            }),
             Body: fs.createReadStream('./output/output.zip')
           }).promise()
         }catch(error){
